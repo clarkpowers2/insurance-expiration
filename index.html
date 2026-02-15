@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>COI Compliance Portal</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary: #1e293b; --success: #16a34a; --warning: #eab308; --danger: #dc2626; --bg: #f8fafc;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--primary); margin: 0; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; border-bottom: 2px solid #e2e8f0; padding-bottom: 10px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .stat-val { font-size: 24px; font-weight: bold; display: block; }
+        .chart-container { height: 300px; margin-bottom: 30px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        th { background: #f1f5f9; padding: 15px; text-align: left; font-size: 13px; text-transform: uppercase; }
+        td { padding: 15px; border-bottom: 1px solid #f1f5f9; font-size: 14px; }
+        .status { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: bold; text-transform: uppercase; }
+        .active { background: #dcfce7; color: #166534; }
+        .expiring { background: #fef9c3; color: #854d0e; }
+        .expired { background: #fee2e2; color: #991b1b; }
+        footer { margin-top: 40px; font-size: 11px; color: #64748b; line-height: 1.5; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div>
+            <h1 style="margin:0;">COI Compliance Dashboard</h1>
+            <p id="lastUpdated" style="margin:5px 0; font-size: 12px; color: #64748b;">Syncing with Automation Hub...</p>
+        </div>
+        <div style="text-align: right;">
+            <span class="stat-val" id="compliance-pct">0%</span>
+            <span style="font-size: 12px; color: #64748b;">Overall Compliance</span>
+        </div>
+    </header>
+
+    <div class="stats-grid">
+        <div class="card">Total Vendors <span class="stat-val" id="total-count">0</span></div>
+        <div class="card" style="border-left: 4px solid var(--success);">Active <span class="stat-val" id="active-count" style="color: var(--success);">0</span></div>
+        <div class="card" style="border-left: 4px solid var(--warning);">Expiring <span class="stat-val" id="warning-count" style="color: var(--warning);">0</span></div>
+        <div class="card" style="border-left: 4px solid var(--danger);">Expired <span class="stat-val" id="danger-count" style="color: var(--danger);">0</span></div>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="complianceChart"></canvas>
+    </div>
+
+    <div class="card" style="padding:0;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Vendor</th>
+                    <th>Property</th>
+                    <th>Expiration</th>
+                    <th>Days Left</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                </tbody>
+        </table>
+    </div>
+
+    <footer>
+        <strong>DISCLAIMER:</strong> Friction Economy Architect provides administrative and document management services only. 
+        I am not a licensed insurance agency, agent, adjuster, or attorney. This dashboard is for tracking purposes only.
+    </footer>
+</div>
+
+<script>
+    // 1. YOUR APPS SCRIPT WEB APP URL GOES HERE:
+    const API_URL = "PASTE_YOUR_APPS_SCRIPT_URL_HERE";
+
+    fetch(API_URL)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) throw new Error(data.error);
+
+            let active = 0, warning = 0, danger = 0;
+            let tableRows = "";
+
+            data.forEach(row => {
+                const days = parseInt(row.Days_Left);
+                let statusClass = "active";
+                let statusText = "Compliant";
+
+                if (days < 0) {
+                    danger++;
+                    statusClass = "expired";
+                    statusText = "Expired";
+                } else if (days <= 30) {
+                    warning++;
+                    statusClass = "expiring";
+                    statusText = "Action Needed";
+                } else {
+                    active++;
+                }
+
+                tableRows += `
+                    <tr>
+                        <td><strong>${row.Vendor_ID}</strong></td>
+                        <td>${row.Property_ID}</td>
+                        <td>${new Date(row.Expiration_Date).toLocaleDateString()}</td>
+                        <td>${days}</td>
+                        <td><span class="status ${statusClass}">${statusText}</span></td>
+                    </tr>
+                `;
+            });
+
+            // Update UI
+            document.getElementById('tableBody').innerHTML = tableRows;
+            document.getElementById('total-count').innerText = data.length;
+            document.getElementById('active-count').innerText = active;
+            document.getElementById('warning-count').innerText = warning;
+            document.getElementById('danger-count').innerText = danger;
+            document.getElementById('lastUpdated').innerText = "Live System Status: " + new Date().toLocaleString();
+            
+            const pct = data.length > 0 ? Math.round((active / data.length) * 100) : 0;
+            document.getElementById('compliance-pct').innerText = pct + "%";
+
+            // Render Chart
+            new Chart(document.getElementById('complianceChart'), {
+                type: 'bar',
+                data: {
+                    labels: ['Active', 'Expiring Soon', 'Expired'],
+                    datasets: [{
+                        label: 'Vendor Count',
+                        data: [active, warning, danger],
+                        backgroundColor: ['#16a34a', '#eab308', '#dc2626']
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('tableBody').innerHTML = `<tr><td colspan="5" style="text-align:center; padding:50px;">Error loading data. Check API URL.</td></tr>`;
+        });
+</script>
+
+</body>
+</html>
